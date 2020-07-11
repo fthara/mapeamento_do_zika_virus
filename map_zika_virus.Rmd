@@ -1,0 +1,242 @@
+---
+output:
+  html_document: default
+  pdf_document: default
+---
+% !TEX encoding = UTF-8 Unicode
+
+---
+title: "Mapeamento do Zika Vírus no Brasil"
+author: "Fernando Tsutomu Hara"
+date: "14/06/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Mapeamento do Zika Vírus
+
+Este projeto tem como objetivo fazer um mapeamento do zika vírus no brasil, analizando através de gráficos como ele cresceu em cada região e estado do país durante o ano de 2016.
+
+## Leitura dos Arquivos
+
+Para realizar este projeto foram coletados 08 arquivos do tipo csv do site oficial do governo federal, onde nos mostra quantas ocorrências houveram por cada localodade. Após a leitura dos arquivos vamos transformá-los em um único data frame.
+
+```{r leitura_arquivos}
+# Lendo os arquivos.
+df1 <- read.csv("Epidemiological_Bulletin-2016-04-02.csv")
+df2 <- read.csv("Epidemiological_Bulletin-2016-04-23.csv")
+df3 <- read.csv("Epidemiological_Bulletin-2016-04-30.csv")
+df4 <- read.csv("Epidemiological_Bulletin-2016-05-07.csv")
+df5 <- read.csv("Epidemiological_Bulletin-2016-05-14.csv")
+df6 <- read.csv("Epidemiological_Bulletin-2016-05-21.csv")
+df7 <- read.csv("Epidemiological_Bulletin-2016-05-28.csv")
+df8 <- read.csv("Epidemiological_Bulletin-2016-06-11.csv")
+
+# Transformação em um único Data Frame
+df <- rbind(df1, df2, df3, df4, df5, df6, df7, df8)
+
+# Verificando os tipos de cada coluna
+str(df)
+```
+
+## Limpeza e Organização dos Dados
+
+Agora faremos a limpeza dos dados, primeiro vamos excluir duas colunas que contêm apenas valores NA, logo depois vamos renomear as colunas e fazer algumas outras modificações que serão explicados nos comentários.
+
+```{r limpeza_e_organizacao}
+# Como as colunas time_period e time_period_type têm apenas valores nulos, vou excluir-las.
+df <- df[, -(6:7)]
+
+# A coluna report_date está como factor. Vou colocá-la como date.
+df$report_date <- as.Date(df$report_date)
+
+# Vou modificar os nomes das colunas para ficar mais fácil a manipulação.
+library(dplyr)
+library(tidyr)
+
+df <- df %>% 
+  rename(
+    data = report_date,
+    local = location,
+    tipo_local = location_type,
+    dado_reportado = data_field,
+    cod_dado_reportado = data_field_code,
+    quantidade = value,
+    unidade = unit
+  )
+
+# Vamos mudar esse data frame para ter uma visualização melhor dos dados. 
+# Primeiro vou excluir as linhas da variável local que contenha as regiões e o pais (Brasil), pois esses dados acabam ficando redundantes. Depois farei o split das coluna local crindo uma coluna pais e outra estado. E por fim criarei a coluna região. Assim fica mais fácil a manipulação dos dados.
+
+# Excluindo linhas
+reg <- c('Norte', 'Nordeste', 'Sudeste', 'Sul', 'Centro-Oeste', 'Brazil')
+for(i in reg){
+  df <- df[df$local != i, ]
+}
+
+
+# Dividindo as colunas por estado e pais
+df <- df %>%
+  separate(local, c("pais", "estado"), "-")
+
+# Criando a coluna região
+norte <- c('Rondonia', 'Amazonas', 'Para', 'Tocantins', 'Acre',
+           'Roraima', 'Amapa')
+nordeste <- c('Maranhao', 'Piaui', 'Ceara', 'Rio_Grande_do_Norte', 'Paraiba',
+              'Pernambuco', 'Alagoas', 'Sergipe', 'Bahia')
+sudeste <- c('Minas_Gerais', 'Espirito_Santo', 'Rio_de_Janeiro', 'Sao_Paulo')
+sul <- c('Parana', 'Santa_Catarina', 'Rio_Grande_do_Sul')
+centro_oeste <- c('Mato_Grosso_do_Sul', 'Mato_Grosso', 'Goias',
+                  'Distrito_Federal')
+df$regiao <- ifelse(df$estado %in% norte, "norte",
+                    (ifelse(df$estado %in% nordeste, "nordeste",
+                            (ifelse(df$estado %in% sudeste, "sudeste",
+                                     (ifelse(df$estado %in% sul, 'sul',
+                                             'centro_oeste')))))))
+# Excluindo a coluna tipo_local
+df <- df[, -4]
+
+# Reorganizando as colunas
+df <- df[, c(1,3,8,2,6,4,5,7)]
+```
+
+
+## Análise e Interpretação dos Dados
+
+Agora faremos a análise e interpretação dos dados, onde criaremos um gráfico de linhas demonstrando o crescimento do vírus zika por região, um gráfico de barras demonstrando o número do vírus por região também e por último um mapa interativo do brasil onde poderemos ver o número de ocorrências por estado, região e país.
+
+```{r analise_e_interpretacao}
+# Vamos criar um novo data frame a partir do original para fazer o gráfico de linha.
+qnt_por_regiao <- df %>%
+  group_by(data, regiao) %>% 
+  summarise(quant = sum(quantidade))
+
+# Para a realização dos dois primeiros gráficos vamos utilizar a biblioteca ggplot2 e hrbrthemes
+library(ggplot2)
+library(hrbrthemes)
+
+# Criação do Gráfico de linhas.
+ggplot(qnt_por_regiao, aes(x=data, y=quant, color=regiao)) +
+  geom_point(size=3) +
+  geom_line() +
+  labs(title="Crescimento de Casos de Zika Virus por Região", x ="Data",
+       y = "Número de Casos", color = "Região") +
+  theme_minimal() +
+  theme(plot.title=element_text(hjust=0.5, vjust=0.5, face='bold'),
+        axis.title.x = element_text(hjust=0.5, vjust=0.5, face='bold'),
+        axis.title.y = element_text(hjust=0.5, vjust=0.5, face='bold'),
+        legend.title =element_text(hjust=0.5, vjust=0.5, face='bold'))
+
+# Podemos perceber que nas regiões suldeste e nordeste foram onde tiveram o maior número de ocorrência da doença do zika vírus, enquanto que nas outras regiões o número foi bem menor. 
+
+# Criação do gráfico de barras.
+# Para criar esse gráfico vamos filtrar o data frame de forma que teremos apenas os dados da última atualização, onde tem todas as ocorrências.
+df %>%
+  filter(data == max(qnt_por_regiao$data)) %>%
+  ggplot(aes(reorder(regiao, -quantidade, sum), quantidade, fill=regiao)) +
+    geom_bar(stat = 'identity') +
+    scale_fill_brewer(palette = "RdYlBu") +
+    labs(title="Total de Casos de Zika Virus por Região", x ="Região",
+         y = "Número de Casos") +
+    theme(plot.title=element_text(hjust=0.5, vjust=0.5, face='bold'),
+          axis.title.x = element_text(hjust=0.5, vjust=0.5, face='bold'),
+          axis.title.y = element_text(hjust=0.5, vjust=0.5, face='bold'))
+
+# Como vimos no gráfico acima, as regiões suldeste e nordeste foram as que tiveram mais ocorrências da doença.
+
+# Criação do Mapa interativo
+# Para criar o mapa vamos criar uma nova coluna no data frame que contenha as silgas de cada estado.
+df$sigla_estado <- sapply(df$estado,
+                         function(col){
+                           if(col == 'Acre')
+                             return('AC')
+                           else if(col == 'Alagoas')
+                             return('AL')
+                           else if(col == 'Amazonas')
+                             return('AM')
+                           else if(col == 'Amapa')
+                             return('AP')
+                           else if(col == 'Bahia')
+                             return('BA')
+                           else if(col == 'Ceara')
+                             return('CE')
+                           else if(col == 'Distrito_Federal')
+                             return('DF')
+                           else if(col == 'Espirito_Santo')
+                             return('ES')
+                           else if(col == 'Goias')
+                             return('GO')
+                           else if(col == 'Maranhao')
+                             return('MA')
+                           else if(col == 'Minas_Gerais')
+                             return('MG')
+                           else if(col == 'Mato_Grosso_do_Sul')
+                             return('MS')
+                           else if(col == 'Mato_Grosso')
+                             return('MT')
+                           else if(col == 'Para')
+                             return('PA')
+                           else if(col == 'Paraiba')
+                             return('PB')
+                           else if(col == 'Pernambuco')
+                             return('PE')
+                           else if(col == 'Piaui')
+                             return('PI')
+                           else if(col == 'Parana')
+                             return('PR')
+                           else if(col == 'Rio_de_Janeiro')
+                             return('RJ')
+                           else if(col == 'Rio_Grande_do_Norte')
+                             return('RN')
+                           else if(col == 'Rondonia')
+                             return('RO')
+                           else if(col == 'Roraima')
+                             return('RR')
+                           else if(col == 'Rio_Grande_do_Sul')
+                             return('RS')
+                           else if(col == 'Santa_Catarina')
+                             return('SC')
+                           else if(col == 'Sergipe')
+                             return('SE')
+                           else if(col == 'Sao_Paulo')
+                             return('SP')
+                           else
+                             return('TO')
+                           })
+
+# Agora vamos ler o arquivo csv, que contém as latitudes e longitudes de cada estado brasileiro.
+lat_long_estados <- read.csv("lat_long_estados.csv", sep=";")
+
+# Transformação da coluna uf para o tipo caracter.
+lat_long_estados$uf <- as.character(lat_long_estados$uf)
+
+# Criação de um novo data frame com o estado, número de casos, latidude e longitude.
+map <- df %>%
+  inner_join(lat_long_estados, by=c('sigla_estado' = 'uf')) %>%
+  filter(data==max(data))
+str(map)
+map <- map[, c('estado', 'quantidade', 'latitude', 'longitude')]
+
+# Para criar o  mapa precisamos repetir o número de linhas para cada estado de acordo com o número de ocorrências.
+num_of_times_to_repeat <- map$quantidade
+map <- map[rep(seq_len(nrow(map)),num_of_times_to_repeat),]
+
+# Para a criação usaremos a biblioteca leaflet.
+library(leaflet)
+
+# Criação do Mapa
+leaflet(map) %>% 
+  addTiles() %>% 
+  addMarkers(clusterOptions = markerClusterOptions())
+```
+
+## Conclusão.
+
+Este projeto nos mostra como podemos utilizar gráficos para interpretar dados de forma diferente e com o mapa interativo as informações ficam de uma maneira fácil e elegantes para apresentar os dados.
+
+## Fim
+## Fernando Tsutomu Hara
+
